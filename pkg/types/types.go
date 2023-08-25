@@ -1,4 +1,4 @@
-package api
+package types
 
 type Ingredient struct {
 	ItemID int `json:"item_id"`
@@ -27,4 +27,4 @@ type ItemPrice struct {
 	Sells TradingPostPrice `json:"sells"`
 }
 
-type KnownRecipes []int
+type RecipeIds []int
