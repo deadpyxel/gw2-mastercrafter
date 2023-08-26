@@ -20,5 +20,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error fetching Recipe Ids for process: %v\n", err)
 	}
-	fmt.Printf("recipeIds: %v\n", recipeIds)
+	for _, recipeId := range recipeIds {
+		recipe, err := gw2Client.FetchRecipe(recipeId)
+		if err != nil {
+			log.Fatalf("Error fetching recipe data %v\n", err)
+		}
+		fmt.Printf("Recipe: %v\n", recipe)
+	}
 }

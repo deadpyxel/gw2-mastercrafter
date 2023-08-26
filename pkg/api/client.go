@@ -50,3 +50,25 @@ func (client *APIClient) FetchAvailableRecipesIds(itemID int) (types.RecipeIds, 
 
 	return recipeIds, nil
 }
+
+func (client *APIClient) FetchRecipe(recipeID int) (*types.Recipe, error) {
+	endpoint := fmt.Sprintf("/recipes/%d", recipeID)
+	response, err := client.makeRequest(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var recipe types.Recipe
+	err = json.Unmarshal(body, &recipe)
+	if err != nil {
+		return nil, err
+	}
+
+	return &recipe, nil
+}

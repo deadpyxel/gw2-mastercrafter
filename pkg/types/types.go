@@ -5,7 +5,7 @@ type Ingredient struct {
 	Count  int `json:"count"`
 }
 
-type Recipes struct {
+type Recipe struct {
 	ID              int          `json:"id"`
 	Type            string       `json:"type"`
 	OutputItemID    int          `json:"output_item_id"`
