@@ -28,3 +28,12 @@ type ItemPrice struct {
 }
 
 type RecipeIds []int
+
+type Item struct {
+	Name        string   `json:"name"`
+	Type        string   `json:"type"`
+	Rarity      string   `json:"rarity"`
+	VendorValue int      `json:"vendor_value"`
+	Flags       []string `json:"flags"`
+	ID          int      `json:"id"`
+}

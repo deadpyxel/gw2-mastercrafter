@@ -51,6 +51,28 @@ func (client *APIClient) FetchAvailableRecipesIds(itemID int) (types.RecipeIds, 
 	return recipeIds, nil
 }
 
+func (client *APIClient) FetchKnownRecipesIds() (types.RecipeIds, error) {
+	endpoint := "/account/recipes"
+	response, err := client.makeRequest(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var recipeIds types.RecipeIds
+	err = json.Unmarshal(body, &recipeIds)
+	if err != nil {
+		return nil, err
+	}
+
+	return recipeIds, nil
+}
+
 func (client *APIClient) FetchRecipe(recipeID int) (*types.Recipe, error) {
 	endpoint := fmt.Sprintf("/recipes/%d", recipeID)
 	response, err := client.makeRequest(endpoint)
@@ -71,4 +93,26 @@ func (client *APIClient) FetchRecipe(recipeID int) (*types.Recipe, error) {
 	}
 
 	return &recipe, nil
+}
+
+func (client *APIClient) FetchItem(recipeID int) (*types.Item, error) {
+	endpoint := fmt.Sprintf("/items/%d", recipeID)
+	response, err := client.makeRequest(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var item types.Item
+	err = json.Unmarshal(body, &item)
+	if err != nil {
+		return nil, err
+	}
+
+	return &item, nil
 }
