@@ -14,6 +14,10 @@ type APIClient struct {
 	authToken string
 }
 
+func (client APIClient) String() string {
+  return fmt.Sprintf("API Client{baseURL: %s, authToken: ########}", client.baseURL)
+}
+
 func NewAPIClient(baseURL, authToken string) *APIClient {
 	return &APIClient{baseURL: baseURL, authToken: authToken}
 }
@@ -29,90 +33,61 @@ func (client *APIClient) makeRequest(endpoint string) (*http.Response, error) {
 	return httpClient.Do(req)
 }
 
+func (client *APIClient) fetchAndDecode(endpoint string, targetType interface{}) error{
+  response, err := client.makeRequest(endpoint)
+  if err != nil {
+    return err
+  }
+  defer response.Body.Close()
+
+  if response.StatusCode != http.StatusOK {
+    return fmt.Errorf("API request error: StatusCode=%s, Response: %+v", response.Status, response)
+  }
+
+  body, err := io.ReadAll(response.Body)
+  if err != nil {
+    return err
+  }
+
+  err = json.Unmarshal(body, targetType)
+  if err != nil {
+    return err
+  }
+
+  return nil
+}
+
 func (client *APIClient) FetchAvailableRecipesIds(itemID int) (types.RecipeIds, error) {
 	endpoint := fmt.Sprintf("/recipes/search?input=%d", itemID)
-	response, err := client.makeRequest(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	var recipeIds types.RecipeIds
-	err = json.Unmarshal(body, &recipeIds)
-	if err != nil {
-		return nil, err
-	}
-
-	return recipeIds, nil
+  err := client.fetchAndDecode(endpoint, &recipeIds)
+	return recipeIds, err
 }
 
 func (client *APIClient) FetchKnownRecipesIds() (types.RecipeIds, error) {
 	endpoint := "/account/recipes"
-	response, err := client.makeRequest(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var recipeIds types.RecipeIds
-	err = json.Unmarshal(body, &recipeIds)
-	if err != nil {
-		return nil, err
-	}
-
-	return recipeIds, nil
+  var knownRecipeIds types.RecipeIds
+  err := client.fetchAndDecode(endpoint, &knownRecipeIds)
+  return knownRecipeIds, err
 }
 
 func (client *APIClient) FetchRecipe(recipeID int) (*types.Recipe, error) {
 	endpoint := fmt.Sprintf("/recipes/%d", recipeID)
-	response, err := client.makeRequest(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
 	var recipe types.Recipe
-	err = json.Unmarshal(body, &recipe)
-	if err != nil {
-		return nil, err
-	}
-
-	return &recipe, nil
+  err := client.fetchAndDecode(endpoint, &recipe)
+	return &recipe, err
 }
 
-func (client *APIClient) FetchItem(recipeID int) (*types.Item, error) {
-	endpoint := fmt.Sprintf("/items/%d", recipeID)
-	response, err := client.makeRequest(endpoint)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, err
-	}
-
+func (client *APIClient) FetchItem(itemID int) (*types.Item, error) {
+	endpoint := fmt.Sprintf("/items/%d", itemID)
 	var item types.Item
-	err = json.Unmarshal(body, &item)
-	if err != nil {
-		return nil, err
-	}
+  err := client.fetchAndDecode(endpoint,&item)
+	return &item, err
+}
 
-	return &item, nil
+func (client *APIClient) FetchItemPrice(itemID int) (*types.ItemPrice, error) {
+	endpoint := fmt.Sprintf("/commerce/prices/%d", itemID)
+	var itemPrice types.ItemPrice
+  err := client.fetchAndDecode(endpoint, &itemPrice)
+	return &itemPrice, err
 }
