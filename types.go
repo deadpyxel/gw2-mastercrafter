@@ -1,4 +1,6 @@
-package types
+package main
+
+import "fmt"
 
 type Ingredient struct {
 	ItemID int `json:"item_id"`
@@ -25,6 +27,14 @@ type ItemPrice struct {
 	ID    int              `json:"id"`
 	Buys  TradingPostPrice `json:"buys"`
 	Sells TradingPostPrice `json:"sells"`
+}
+
+func (tpPrice TradingPostPrice) String() string {
+	goldAmount := tpPrice.UnitPrice / 10000
+	silverAmount := (tpPrice.UnitPrice % 10000) / 100
+	copperAmount := tpPrice.UnitPrice % 100
+	priceString := fmt.Sprintf("%dg %ds %dc", goldAmount, silverAmount, copperAmount)
+	return fmt.Sprintf("Price: %s, Orders: %d", priceString, tpPrice.Quantity)
 }
 
 type RecipeIds []int
