@@ -55,6 +55,13 @@ func (client *APIClient) fetchAndDecode(endpoint string, targetType interface{})
 	return nil
 }
 
+func (client *APIClient) FetchBuildNumber() (Metadata, error) {
+	endpoint := "/build"
+	var metadata Metadata
+	err := client.fetchAndDecode(endpoint, &metadata)
+	return metadata, err
+}
+
 func (client *APIClient) FetchAvailableRecipesIds(itemID int) (RecipeIds, error) {
 	endpoint := fmt.Sprintf("/recipes/search?input=%d", itemID)
 	var recipeIds RecipeIds
@@ -67,6 +74,13 @@ func (client *APIClient) FetchKnownRecipesIds() (RecipeIds, error) {
 	var knownRecipeIds RecipeIds
 	err := client.fetchAndDecode(endpoint, &knownRecipeIds)
 	return knownRecipeIds, err
+}
+
+func (client *APIClient) FetchAllRecipesIds() (RecipeIds, error) {
+	endpoint := "/recipes/"
+	var recipeIds RecipeIds
+	err := client.fetchAndDecode(endpoint, &recipeIds)
+	return recipeIds, err
 }
 
 func (client *APIClient) FetchRecipe(recipeID int) (*Recipe, error) {

@@ -2,6 +2,10 @@ package main
 
 import "fmt"
 
+type Metadata struct {
+	BuildNumber int `json:"id"`
+}
+
 type Ingredient struct {
 	ItemID int `json:"item_id"`
 	Count  int `json:"count"`
