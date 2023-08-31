@@ -54,13 +54,46 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 	if err != nil {
 		return []Recipe{}, err
 	}
-	recipes := []Recipe{}
-	for _, recipeId := range recipesIds {
-		recipe, err := client.FetchRecipe(recipeId)
-		if err != nil {
-			return []Recipe{}, err
+
+	recipeChannel := make(chan Recipe)
+	recipeIdsChannel := make(chan int)
+	errorChannel := make(chan error)
+	doneChannel := make(chan struct{})
+
+	concurrency := 4
+
+	// start goroutines
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			for recipeId := range recipeIdsChannel {
+				recipe, err := client.FetchRecipe(recipeId)
+				if err != nil {
+					errorChannel <- err
+					return
+				}
+				recipeChannel <- *recipe
+			}
+			doneChannel <- struct{}{}
+		}()
+	}
+
+	// distributre work
+	go func() {
+		for _, recipeID := range recipesIds {
+			recipeIdsChannel <- recipeID
 		}
-		recipes = append(recipes, *recipe)
+		close(recipeIdsChannel)
+	}()
+
+	recipes := []Recipe{}
+	for range recipesIds {
+		select {
+		case recipe := <-recipeChannel:
+			recipes = append(recipes, recipe)
+		case err := <-errorChannel:
+			return []Recipe{}, err
+		case <-doneChannel:
+		}
 	}
 	return recipes, nil
 }
