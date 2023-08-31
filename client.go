@@ -39,7 +39,7 @@ func (client *APIClient) fetchAndDecode(endpoint string, targetType interface{})
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("API request error: StatusCode=%s, Response: %+v", response.Status, response)
+		return fmt.Errorf("API request error querying [%s]: StatusCode=%s, Response: %+v", endpoint, response.Status, response)
 	}
 
 	body, err := io.ReadAll(response.Body)

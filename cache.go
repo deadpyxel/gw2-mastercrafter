@@ -43,7 +43,8 @@ func fetchStoredBuildNumber(db *sql.DB) (int, error) {
 	var currentBuildNumber int
 	err := db.QueryRow(query).Scan(&currentBuildNumber)
 	if err != nil {
-		return 0, err
+		// TODO: better logic for cases where the table is empty or does not exist
+		return 0, nil // in case the table does not exist
 	}
 	return currentBuildNumber, err
 }
