@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 type APIClient struct {
@@ -18,6 +20,14 @@ func (client APIClient) String() string {
 
 func NewAPIClient(baseURL, authToken string) *APIClient {
 	return &APIClient{baseURL: baseURL, authToken: authToken}
+}
+
+func formatIntSliceAsStr(ids []int) string {
+	idsAsStr := make([]string, len(ids))
+	for i, id := range ids {
+		idsAsStr[i] = strconv.Itoa(id)
+	}
+	return strings.Join(idsAsStr, ",")
 }
 
 func (client *APIClient) makeRequest(endpoint string) (*http.Response, error) {
@@ -81,6 +91,14 @@ func (client *APIClient) FetchAllRecipesIds() (RecipeIds, error) {
 	var recipeIds RecipeIds
 	err := client.fetchAndDecode(endpoint, &recipeIds)
 	return recipeIds, err
+}
+
+func (client *APIClient) BatchFetchRecipes(recipeIds RecipeIds) ([]Recipe, error) {
+	recipeIdsAsStr := formatIntSliceAsStr(recipeIds)
+	endpoint := fmt.Sprintf("/recipes?ids=%s", recipeIdsAsStr)
+	var recipes []Recipe
+	err := client.fetchAndDecode(endpoint, &recipes)
+	return recipes, err
 }
 
 func (client *APIClient) FetchRecipe(recipeID int) (*Recipe, error) {
