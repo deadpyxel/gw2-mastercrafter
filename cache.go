@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -55,47 +56,71 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 		return []Recipe{}, err
 	}
 
-	recipeChannel := make(chan Recipe)
-	recipeIdsChannel := make(chan int)
+	recipeChannel := make(chan []Recipe)
+	recipeIdsChannel := make(chan RecipeIds)
 	errorChannel := make(chan error)
 	doneChannel := make(chan struct{})
 
-	concurrency := 4
+	concurrency := 8
+	batchSize := 200
+	ticker := time.NewTicker(time.Minute / 300) // GW2 API has 300 requests/minute rate limit
 
 	// start goroutines
 	for i := 0; i < concurrency; i++ {
 		go func() {
-			for recipeId := range recipeIdsChannel {
-				recipe, err := client.FetchRecipe(recipeId)
+			for recipeIdsBatch := range recipeIdsChannel {
+				var recipes []Recipe
+				var err error
+				retries := 3
+
+				for retries > 0 {
+					<-ticker.C
+					recipes, err = client.BatchFetchRecipes(recipeIdsBatch)
+					if err == nil || isRetriable(err) {
+						break
+					}
+					retries--
+				}
 				if err != nil {
 					errorChannel <- err
 					return
 				}
-				recipeChannel <- *recipe
+				recipeChannel <- recipes
 			}
 			doneChannel <- struct{}{}
 		}()
 	}
 
-	// distributre work
+	// distribute work
 	go func() {
-		for _, recipeID := range recipesIds {
-			recipeIdsChannel <- recipeID
+		for i := 0; i < len(recipesIds); i += batchSize {
+			end := i + batchSize
+			if end > len(recipesIds) {
+				end = len(recipesIds)
+			}
+			recipeIdsChannel <- recipesIds[i:end]
 		}
 		close(recipeIdsChannel)
 	}()
 
 	recipes := []Recipe{}
-	for range recipesIds {
+	completedGoroutines := 0
+	for completedGoroutines < concurrency {
 		select {
-		case recipe := <-recipeChannel:
-			recipes = append(recipes, recipe)
+		case recipesBatch := <-recipeChannel:
+			recipes = append(recipes, recipesBatch...)
 		case err := <-errorChannel:
 			return []Recipe{}, err
 		case <-doneChannel:
+			completedGoroutines++
 		}
 	}
 	return recipes, nil
+}
+
+func isRetriable(httpError error) bool {
+	fmt.Printf("%+v", httpError)
+	return true
 }
 
 func updateBuildMetadata(db *sql.DB, buildMetadata Metadata) error {
