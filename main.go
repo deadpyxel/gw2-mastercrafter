@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/deadpyxel/gw2-mastercrafter/internal"
+	config "github.com/deadpyxel/gw2-mastercrafter/internal"
 )
 
 func main() {
