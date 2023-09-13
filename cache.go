@@ -7,11 +7,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 func UpdateCache(client *APIClient) {
-	db, err := sql.Open("sqlite3", "cache.db")
+	db, err := sqlx.Connect("sqlite3", "cache.db")
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Error updating local cache: %v", err))
 	}
@@ -45,7 +46,7 @@ func UpdateCache(client *APIClient) {
 }
 
 func LoadCache() []Recipe {
-	db, err := sql.Open("sqlite3", "cache.db")
+	db, err := sqlx.Connect("sqlite3", "cache.db")
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Error updating cache: %v", err))
 	}
@@ -59,10 +60,10 @@ func LoadCache() []Recipe {
 	return recipes
 }
 
-func fetchStoredBuildNumber(db *sql.DB) (int, error) {
+func fetchStoredBuildNumber(db *sqlx.DB) (int, error) {
 	// Check if table already exists
 	var exists bool
-	err := db.QueryRow("SELECT EXISTS (SELECT name FROM sqlite_schema WHERE type='table' AND name='metadata')").Scan(&exists)
+	err := db.Get(&exists, "SELECT EXISTS (SELECT name FROM sqlite_schema WHERE type='table' AND name='metadata')")
 	if err != nil {
 		return 0, fmt.Errorf("failed to check if table exists: %w", err)
 	}
@@ -156,7 +157,7 @@ func isRetriable(httpError error) bool {
 	return true
 }
 
-func updateBuildMetadata(db *sql.DB, buildMetadata Metadata) error {
+func updateBuildMetadata(db *sqlx.DB, buildMetadata Metadata) error {
 	if err := createMetadataTableIfNotExists(db); err != nil {
 		return err
 	}
@@ -166,7 +167,7 @@ func updateBuildMetadata(db *sql.DB, buildMetadata Metadata) error {
 	return err
 }
 
-func updateRecipeCache(db *sql.DB, recipes []Recipe) error {
+func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 	createtableQuery := `
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY,
@@ -192,7 +193,7 @@ func updateRecipeCache(db *sql.DB, recipes []Recipe) error {
 		return err
 	}
 	// create transation object
-	tx, err := db.Begin()
+	tx, err := db.Beginx()
 	if err != nil {
 		return err
 	}
@@ -264,8 +265,8 @@ func updateRecipeCache(db *sql.DB, recipes []Recipe) error {
 	return nil
 }
 
-func loadRecipeCache(db *sql.DB) ([]Recipe, error) {
-	rows, err := db.Query("SELECT id, type, output_item_id, output_item_count, disciplines, min_rating, flags FROM recipes")
+func loadRecipeCache(db *sqlx.DB) ([]Recipe, error) {
+	rows, err := db.Queryx("SELECT id, type, output_item_id, output_item_count, disciplines, min_rating, flags FROM recipes")
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +286,7 @@ func loadRecipeCache(db *sql.DB) ([]Recipe, error) {
 	}
 
 	// Fetch Ingredients
-	rows, err = db.Query("SELECT item_id, count, recipe_id FROM ingredients")
+	rows, err = db.Queryx("SELECT item_id, count, recipe_id FROM ingredients")
 	if err != nil {
 		return nil, err
 	}
@@ -311,7 +312,7 @@ func loadRecipeCache(db *sql.DB) ([]Recipe, error) {
 	return recipes, nil
 }
 
-func createMetadataTableIfNotExists(db *sql.DB) error {
+func createMetadataTableIfNotExists(db *sqlx.DB) error {
 	createTableQuery := `
     CREATE TABLE IF NOT EXISTS metadata (
 			build_number INTEGER PRIMARY KEY
@@ -324,7 +325,7 @@ func createMetadataTableIfNotExists(db *sql.DB) error {
 	// Check if the metadata table is empty
 	checkEmptyQuery := "SELECT COUNT(*) FROM metadata"
 	var count int
-	err = db.QueryRow(checkEmptyQuery).Scan(&count)
+	err = db.Get(&count, checkEmptyQuery)
 	if err != nil {
 		return err
 	}
