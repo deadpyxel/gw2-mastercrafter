@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	config "github.com/deadpyxel/gw2-mastercrafter/internal"
@@ -15,6 +16,8 @@ func main() {
 	}
 	gw2Client := NewAPIClient("https://api.guildwars2.com/v2", apiToken)
 	UpdateCache(gw2Client)
+	recipes := LoadCache()
+	fmt.Printf("Recipe count: %d, Recipe slice: %v\n", len(recipes), recipes[:10])
 	crafter := NewCrafter(*gw2Client)
 	crafter.FindProfitableOptions(19700)
 }

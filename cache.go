@@ -28,6 +28,7 @@ func UpdateCache(client *APIClient) {
 	}
 	if currentBuildMetadata.BuildNumber > storedBuildNumber {
 		// update cache
+		fmt.Printf("Found new build %d, updating local cache...\n", currentBuildMetadata.BuildNumber)
 		recipes, err := fetchAllRecipeDataFromAPI(client)
 		if err != nil {
 			log.Fatal(err)
@@ -42,6 +43,21 @@ func UpdateCache(client *APIClient) {
 			log.Fatalf("Could not update Build metadata: %+v", err)
 		}
 	}
+}
+
+func LoadCache() []Recipe {
+	db, err := sql.Open("sqlite3", "cache.db")
+	if err != nil {
+		log.Fatalf("Error updating cache: %v", err)
+	}
+	defer db.Close()
+
+	recipes, err := loadRecipeCache(db)
+	if err != nil {
+		log.Fatalf("Error loading recipe cache: %v\n", err)
+	}
+
+	return recipes
 }
 
 func fetchStoredBuildNumber(db *sql.DB) (int, error) {
@@ -249,8 +265,51 @@ func updateRecipeCache(db *sql.DB, recipes []Recipe) error {
 	return nil
 }
 
-func loadRecipeCache(db *sql.DB) []Recipe {
-	return []Recipe{}
+func loadRecipeCache(db *sql.DB) ([]Recipe, error) {
+	rows, err := db.Query("SELECT id, type, output_item_id, output_item_count, disciplines, min_rating, flags FROM recipes")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// Load recipe data on slice
+	var recipes []Recipe
+	for rows.Next() {
+		var recipe Recipe
+		var disciplines, flags string
+		if err := rows.Scan(&recipe.ID, &recipe.Type, &recipe.OutputItemID, &recipe.OutputItemCount, &disciplines, &recipe.MinRating, &flags); err != nil {
+			return nil, err
+		}
+		recipe.Disciplines = strings.Split(disciplines, ",")
+		recipe.Flags = strings.Split(flags, ",")
+		recipes = append(recipes, recipe)
+	}
+
+	// Fetch Ingredients
+	rows, err = db.Query("SELECT item_id, count, recipe_id FROM ingredients")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// stuff like stuff
+	ingredients := make(map[int][]Ingredient)
+	for rows.Next() {
+		var ingredient Ingredient
+		var recipeID int
+		if err := rows.Scan(&ingredient.ItemID, &ingredient.Count, &recipeID); err != nil {
+			return nil, err
+		}
+		ingredients[recipeID] = append(ingredients[recipeID], ingredient)
+	}
+
+	for i, recipe := range recipes {
+		if ing, ok := ingredients[recipe.ID]; ok {
+			recipes[i].Ingredients = ing
+		}
+	}
+
+	return recipes, nil
 }
 
 func createMetadataTableIfNotExists(db *sql.DB) error {
