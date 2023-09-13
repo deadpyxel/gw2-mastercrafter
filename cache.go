@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -14,33 +13,33 @@ import (
 func UpdateCache(client *APIClient) {
 	db, err := sql.Open("sqlite3", "cache.db")
 	if err != nil {
-		log.Fatalf("Error updating cache: %v", err)
+		logger.Fatal(fmt.Sprintf("Error updating local cache: %v", err))
 	}
 	defer db.Close()
 
 	currentBuildMetadata, err := client.FetchBuildNumber()
 	if err != nil {
-		log.Fatalf("Cannot fetch build number from API: %v", err)
+		logger.Fatal(fmt.Sprintf("Cannot fetch build number from API: %v", err))
 	}
 	storedBuildNumber, err := fetchStoredBuildNumber(db)
 	if err != nil {
-		log.Fatalf("Cannot fetch stored build number from local cache: %v", err)
+		logger.Fatal(fmt.Sprintf("Cannot fetch stored build number from local cache: %v", err))
 	}
 	if currentBuildMetadata.BuildNumber > storedBuildNumber {
 		// update cache
-		fmt.Printf("Found new build %d, updating local cache...\n", currentBuildMetadata.BuildNumber)
+		logger.Info(fmt.Sprintf("Found new build %d, updating local cache...", currentBuildMetadata.BuildNumber))
 		recipes, err := fetchAllRecipeDataFromAPI(client)
 		if err != nil {
-			log.Fatal(err)
+			logger.Fatal(fmt.Sprintf("%v", err))
 		}
 		err = updateRecipeCache(db, recipes)
 		if err != nil {
-			log.Fatalf("Failure updating local recipe cache: %+v", err)
+			logger.Fatal(fmt.Sprintf("Failure updating local recipe cache: %+v", err))
 		}
 		// update build number here
 		err = updateBuildMetadata(db, currentBuildMetadata)
 		if err != nil {
-			log.Fatalf("Could not update Build metadata: %+v", err)
+			logger.Fatal(fmt.Sprintf("Could not update Build metadata: %+v", err))
 		}
 	}
 }
@@ -48,13 +47,13 @@ func UpdateCache(client *APIClient) {
 func LoadCache() []Recipe {
 	db, err := sql.Open("sqlite3", "cache.db")
 	if err != nil {
-		log.Fatalf("Error updating cache: %v", err)
+		logger.Fatal(fmt.Sprintf("Error updating cache: %v", err))
 	}
 	defer db.Close()
 
 	recipes, err := loadRecipeCache(db)
 	if err != nil {
-		log.Fatalf("Error loading recipe cache: %v\n", err)
+		logger.Fatal(fmt.Sprintf("Error loading recipe cache: %v\n", err))
 	}
 
 	return recipes
