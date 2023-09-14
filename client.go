@@ -115,6 +115,21 @@ func (client *APIClient) FetchItem(itemID int) (*Item, error) {
 	return &item, err
 }
 
+func (client *APIClient) FetchAllItemsIds() ([]int, error) {
+	endpoint := "/items/"
+	var itemIds []int
+	err := client.fetchAndDecode(endpoint, &itemIds)
+	return itemIds, err
+}
+
+func (client *APIClient) BatchFetchItems(itemIds []int) ([]Item, error) {
+	itemIdsAsStr := formatIntSliceAsStr(itemIds)
+	endpoint := fmt.Sprintf("/items?ids=%s", itemIdsAsStr)
+	var items []Item
+	err := client.fetchAndDecode(endpoint, &items)
+	return items, err
+}
+
 func (client *APIClient) FetchItemPrice(itemID int) (*ItemPrice, error) {
 	endpoint := fmt.Sprintf("/commerce/prices/%d", itemID)
 	var itemPrice ItemPrice

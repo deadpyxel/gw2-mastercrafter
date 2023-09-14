@@ -37,6 +37,14 @@ func UpdateCache(client *APIClient) {
 		if err != nil {
 			logger.Fatal(fmt.Sprintf("Failure updating local recipe cache: %+v", err))
 		}
+		items, err := fetchAllItemDataFromAPI(client)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to fetch item data from API: %v", err))
+		}
+		err = updateItemCache(db, items)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failure updating local item cache: %v", err))
+		}
 		// update build number here
 		err = updateBuildMetadata(db, currentBuildMetadata)
 		if err != nil {
@@ -151,6 +159,73 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 	}
 	return recipes, nil
 }
+func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
+	itemIds, err := client.FetchAllItemsIds()
+	if err != nil {
+		return []Item{}, err
+	}
+
+	itemChannel := make(chan []Item)
+	itemIdsChannel := make(chan []int)
+	errorChannel := make(chan error)
+	doneChannel := make(chan struct{})
+
+	concurrency := 8
+	batchSize := 200
+	ticker := time.NewTicker(time.Minute / 300) // GW2 API has 300 requests/minute rate limit
+
+	// start goroutines
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			for itemIdsBatch := range itemIdsChannel {
+				var items []Item
+				var err error
+				retries := 3
+
+				for retries > 0 {
+					<-ticker.C
+					items, err = client.BatchFetchItems(itemIdsBatch)
+					if err == nil || isRetriable(err) {
+						break
+					}
+					retries--
+				}
+				if err != nil {
+					errorChannel <- err
+					return
+				}
+				itemChannel <- items
+			}
+			doneChannel <- struct{}{}
+		}()
+	}
+
+	// distribute work
+	go func() {
+		for i := 0; i < len(itemIds); i += batchSize {
+			end := i + batchSize
+			if end > len(itemIds) {
+				end = len(itemIds)
+			}
+			itemIdsChannel <- itemIds[i:end]
+		}
+		close(itemIdsChannel)
+	}()
+
+	items := []Item{}
+	completedGoroutines := 0
+	for completedGoroutines < concurrency {
+		select {
+		case itemBatch := <-itemChannel:
+			items = append(items, itemBatch...)
+		case err := <-errorChannel:
+			return []Item{}, err
+		case <-doneChannel:
+			completedGoroutines++
+		}
+	}
+	return items, nil
+}
 
 func isRetriable(httpError error) bool {
 	fmt.Printf("%+v", httpError)
@@ -261,6 +336,81 @@ func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 	// Commit transaction
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("Failed to commit transiction while updating recipe cache: %w", err)
+	}
+	return nil
+}
+
+func updateItemCache(db *sqlx.DB, items []Item) error {
+	createTableQuery := `
+    CREATE TABLE IF NOT EXISTS items (
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      type TEXT,
+      rarity TEXT,
+      vendor_value INTEGER,
+      flags TEXT
+    );
+  `
+	_, err := db.Exec(createTableQuery)
+	if err != nil {
+		return err
+	}
+
+	// create transaction object
+	tx, err := db.Beginx()
+	if err != nil {
+		return err
+	}
+
+	// Use a waitGroup to ensure all upserts are done before committing
+	var wg sync.WaitGroup
+	errorsChan := make(chan error, len(items))
+	upsertItemStmt := `
+		INSERT INTO items (id, name, type, rarity, vendor_value, flags)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(id) DO UPDATE SET
+			name = excluded.name,
+			type = excluded.type,
+			rarity = excluded.rarity,
+			vendor_value = excluded.vendor_value,
+			flags = excluded.flags;
+  `
+
+	for _, item := range items {
+		wg.Add(1)
+		go func(item Item) {
+			defer wg.Done()
+
+			_, err := tx.Exec(upsertItemStmt,
+				item.ID,
+				item.Name,
+				item.Type,
+				item.Rarity,
+				item.VendorValue,
+				strings.Join(item.Flags, ","),
+			)
+			if err != nil {
+				errorsChan <- fmt.Errorf("Error upserting item %d: %w", item.ID, err)
+				return
+			}
+		}(item)
+	}
+
+	// Wait for all upserts to finish
+	wg.Wait()
+	close(errorsChan)
+
+	// Check if we had any errors during upsert
+	for err := range errorsChan {
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("Failed to commit transaction while updating item cache: %w", err)
 	}
 	return nil
 }
