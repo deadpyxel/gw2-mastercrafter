@@ -3,14 +3,18 @@ package main
 import (
 	"fmt"
 	"log"
+	"slices"
 )
 
+// A Crafter uses the API client to request data about pricing of items,
+// while using the localCache to search information on crafting recipes
 type Crafter struct {
-	gw2APIClient APIClient
+	gw2APIClient APIClient  // underlying API client connection
+	localCache   LocalCache // underlying local SQlite cache
 }
 
-func NewCrafter(gw2APIClient APIClient) *Crafter {
-	return &Crafter{gw2APIClient: gw2APIClient}
+func NewCrafter(gw2APIClient APIClient, localCache LocalCache) *Crafter {
+	return &Crafter{gw2APIClient: gw2APIClient, localCache: localCache}
 }
 
 func (crafter *Crafter) fetchItemTPPrice(itemID int) *ItemPrice {
@@ -42,30 +46,40 @@ func (crafter *Crafter) extractRecipeCost(recipe Recipe) int {
 	return recipeCost
 }
 
-func (crafter *Crafter) FindProfitableOptions(itemID int) (int, error) {
-	// knownRecipes, err := crafter.gw2APIClient.FetchKnownRecipesIds()
-	// if err != nil {
-	// 	fmt.Printf("Error fetching Known Recipe IDs: %v\n", err)
-	// }
-	availableRecipes, err := crafter.gw2APIClient.FetchAvailableRecipesIds(itemID)
-	if err != nil {
-		fmt.Printf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err)
+func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
+	if slices.Contains(recipe.Flags, "AutoLearned") {
+		return true
 	}
-	for _, recipeId := range availableRecipes {
-		// if !slices.Contains(knownRecipes, recipeId) {
-		// 	fmt.Printf("Recipe %d not known, skipping...\n", recipeId)
-		// 	continue
-		// }
-		recipe, err := crafter.gw2APIClient.FetchRecipe(recipeId)
-		if err != nil {
-			log.Fatalf("Recipe fetching failed for recipe ID %d: %v\n", recipeId, err)
-		}
-		fmt.Printf("Recipe info: %+v\n", recipe)
-		recipeCost := crafter.extractRecipeCost(*recipe)
-		recipeOutputPrice := crafter.findItemSellValue(recipe.OutputItemID)
-		profit := float32(recipeOutputPrice) / float32(recipeCost)
-		fmt.Printf("craft price: %d, sell price: %d, profit: %f\n", recipeCost, recipeOutputPrice, profit)
+	knownRecipeIds, err := crafter.gw2APIClient.FetchKnownRecipesIds()
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Error fetching Known Recipe IDs: %v", err))
+	}
+	return slices.Contains(knownRecipeIds, recipe.ID)
+}
 
+func (crafter *Crafter) recipeOutputIsTradeable(itemID int) bool {
+	itemsOnTP, err := crafter.gw2APIClient.FetchAllIds("/commerce/prices")
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Error loading tradable item ids from API: %v", err))
+	}
+	return slices.Contains(itemsOnTP, itemID)
+}
+
+func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {
+	return crafter.recipeIsAvailable(recipe) && crafter.recipeOutputIsTradeable(recipe.OutputItemID)
+}
+
+func (crafter *Crafter) FindProfitableOptions(itemID int) (int, error) {
+	availableRecipes, err := crafter.localCache.GetRecipeByIngredient(itemID)
+	if err != nil {
+		logger.Fatal(fmt.Sprintf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err))
+	}
+	for _, recipe := range availableRecipes {
+		if !crafter.recipeIsViable(recipe) {
+			logger.Info(fmt.Sprintf("Recipe %d is not viable for crafting", recipe.ID))
+			continue
+		}
+		logger.Info(fmt.Sprintf("Recipe Data: %+v", recipe))
 	}
 
 	return 0, nil

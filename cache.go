@@ -11,6 +11,80 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+type Fetcher interface {
+	FetchAllIds() ([]int, error)
+	BatchFetch(ids []int) ([]interface{}, error)
+}
+
+func fetchAllDataFromAPI(client Fetcher) ([]interface{}, error) {
+	ids, err := client.FetchAllIds()
+	if err != nil {
+		return nil, err
+	}
+
+	// Define Channels
+	dataChannel := make(chan []interface{})
+	idsChannel := make(chan []int)
+	errorChannel := make(chan error)
+	doneChannel := make(chan []struct{})
+
+	// Define concurrency related values
+	concurrency := 8
+	batchSize := 200
+	ticker := time.NewTicker(time.Minute / 300) // GW2 API has ~300 req/min limit
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			for idsBatch := range idsChannel {
+				var data []interface{}
+				var err error
+				retries := 3
+				for retries > 0 {
+					<-ticker.C
+					data, err = client.BatchFetch(idsBatch)
+					if err == nil || isRetriable(err) {
+						break
+					}
+					retries--
+				}
+				if err != nil {
+					errorChannel <- err
+					return
+				}
+				dataChannel <- data
+			}
+			doneChannel <- []struct{}{}
+		}()
+	}
+
+	// distribute work
+	go func() {
+		for i := 0; i < len(ids); i += batchSize {
+			end := i + batchSize
+			if end > len(ids) {
+				end = len(ids)
+			}
+			idsChannel <- ids[i:end]
+		}
+		close(idsChannel)
+	}()
+
+	// collect results
+	data := []interface{}{}
+	completedGoroutines := 0
+	for completedGoroutines < concurrency {
+		select {
+		case dataBatch := <-dataChannel:
+			data = append(data, dataBatch...)
+		case err := <-errorChannel:
+			return nil, err
+		case <-doneChannel:
+			completedGoroutines++
+		}
+	}
+	return data, nil
+}
+
 func UpdateCache(client *APIClient) {
 	db, err := sqlx.Connect("sqlite3", "cache.db")
 	if err != nil {
@@ -44,6 +118,14 @@ func UpdateCache(client *APIClient) {
 		err = updateItemCache(db, items)
 		if err != nil {
 			logger.Fatal(fmt.Sprintf("Failure updating local item cache: %v", err))
+		}
+		tradeableItemIds, err := client.FetchAllIds("/commerce/prices")
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failed to fetch tradeable item ids from API: %v", err))
+		}
+		err = updateTradeableItemsCache(db, tradeableItemIds)
+		if err != nil {
+			logger.Fatal(fmt.Sprintf("Failure updating local tradeable item cache: %v", err))
 		}
 		// update build number here
 		err = updateBuildMetadata(db, currentBuildMetadata)
@@ -242,7 +324,48 @@ func updateBuildMetadata(db *sqlx.DB, buildMetadata Metadata) error {
 	return err
 }
 
+func updateTradeableItemsCache(db *sqlx.DB, tradeableItemIds []int) error {
+	logger.Info("Updating local tradeable items cache")
+	createTableQuery := `
+    CREATE TABLE IF NOT EXISTS tradeable_items (
+			id INTEGER PRIMARY KEY
+		);
+    CREATE INDEX IF NOT EXISTS idx_tradeable_items_id ON tradeable_items (id);
+  `
+	_, err := db.Exec(createTableQuery)
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Preparex("INSERT OR REPLACE INTO tradeable_items (id) VALUES (?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, id := range tradeableItemIds {
+		_, err = stmt.Exec(id)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
+	logger.Info("Updating local Recipe cache")
 	createtableQuery := `
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY,
@@ -341,6 +464,7 @@ func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 }
 
 func updateItemCache(db *sqlx.DB, items []Item) error {
+	logger.Info("Updating local Item cache...")
 	createTableQuery := `
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY,

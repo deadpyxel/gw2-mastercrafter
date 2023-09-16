@@ -72,6 +72,40 @@ func (client *APIClient) FetchBuildNumber() (Metadata, error) {
 	return metadata, err
 }
 
+func (client *APIClient) FetchAllIds(endpoint string) ([]int, error) {
+	var ids []int
+	err := client.fetchAndDecode(endpoint, &ids)
+	return ids, err
+}
+
+func (client *APIClient) BatchFetch(ids []int, endpoint string, dataType string) ([]interface{}, error) {
+	idsAsStr := formatIntSliceAsStr(ids)
+	endpoint = fmt.Sprintf("%s?ids=%s", endpoint, idsAsStr)
+
+	switch dataType {
+	case "item":
+		var items []Item
+		err := client.fetchAndDecode(endpoint, &items)
+		//Convert []Item to []interface{}
+		data := make([]interface{}, len(items))
+		for i, v := range items {
+			data[i] = v
+		}
+		return data, err
+	case "recipes":
+		var recipes []Recipe
+		err := client.fetchAndDecode(endpoint, &recipes)
+		//Convert []Item to []interface{}
+		data := make([]interface{}, len(recipes))
+		for i, v := range recipes {
+			data[i] = v
+		}
+		return data, err
+	default:
+		return nil, fmt.Errorf("Invalid data type %s", dataType)
+	}
+}
+
 func (client *APIClient) FetchAvailableRecipesIds(itemID int) (RecipeIds, error) {
 	endpoint := fmt.Sprintf("/recipes/search?input=%d", itemID)
 	var recipeIds RecipeIds
