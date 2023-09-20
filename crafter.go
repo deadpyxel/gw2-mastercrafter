@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"slices"
+	"sort"
 )
 
 // A Crafter uses the API client to request data about pricing of items,
@@ -65,22 +66,49 @@ func (crafter *Crafter) itemIsTradeable(itemID int) bool {
 	return isTradeable
 }
 
-func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {
-	return crafter.recipeIsAvailable(recipe) && crafter.recipeOutputIsTradeable(recipe.OutputItemID)
+func (crafter *Crafter) itemTypeisAllowed(itemType string) bool {
+	return !slices.Contains(configObj.RemovedTypes, itemType)
 }
 
-func (crafter *Crafter) FindProfitableOptions(itemID int) (int, error) {
+// A viable recipe is
+// - available (learned)
+// - has an output that is tradeable
+// - the output item type is not present on filtered out options
+func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {
+	return crafter.recipeIsAvailable(recipe) && crafter.itemIsTradeable(recipe.OutputItemID) && crafter.itemTypeisAllowed(recipe.Type)
+}
+
+func (crafter *Crafter) calculateProfitMargin(recipe Recipe) float64 {
+	logger.Debug("Calculating profit margin...", "recipeID", recipe.ID, "OutputItemID", recipe.OutputItemID)
+	recipeCost := float64(crafter.extractRecipeCost(recipe))
+	recipeOutputPrice := float64(crafter.findItemSellValue(recipe.OutputItemID))
+	// Assuming we are selling it on TP
+	return (recipeOutputPrice * 0.85) / recipeCost
+}
+
+func (crafter *Crafter) FindProfitableOptions(itemID int) ([]RecipeProfit, error) {
 	availableRecipes, err := crafter.localCache.GetRecipeByIngredient(itemID)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err))
 	}
+	var profitableRecipes []RecipeProfit
 	for _, recipe := range availableRecipes {
 		if !crafter.recipeIsViable(recipe) {
-			logger.Info(fmt.Sprintf("Recipe %d is not viable for crafting", recipe.ID))
+			logger.Debug(fmt.Sprintf("Recipe %d is not viable for crafting", recipe.ID))
 			continue
 		}
-		logger.Info(fmt.Sprintf("Recipe Data: %+v", recipe))
+		profitMargin := crafter.calculateProfitMargin(recipe)
+		if profitMargin < configObj.ProfitThreshold {
+			logger.Debug("Recipe not profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
+			continue
+		}
+		logger.Debug("Recipe is profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
+		profitableRecipes = append(profitableRecipes, RecipeProfit{RecipeID: recipe.ID, ProfitMargin: profitMargin})
 	}
 
-	return 0, nil
+	sort.Slice(profitableRecipes, func(i, j int) bool {
+		return profitableRecipes[i].ProfitMargin > profitableRecipes[j].ProfitMargin
+	})
+
+	return profitableRecipes, nil
 }
