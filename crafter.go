@@ -57,7 +57,7 @@ func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
 	return slices.Contains(knownRecipeIds, recipe.ID)
 }
 
-func (crafter *Crafter) recipeOutputIsTradeable(itemID int) bool {
+func (crafter *Crafter) itemIsTradeable(itemID int) bool {
 	isTradeable, err := crafter.localCache.ItemIsTradeable(itemID)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Error checking if item is tradeable: %v", err))
