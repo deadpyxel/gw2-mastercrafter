@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -8,11 +9,11 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func generateItemIds() []int {
+func generateItemIds(size int) []int {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	var tradeableItemIds []int
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < size; i++ {
 		tradeableItemIds = append(tradeableItemIds, r.Intn(10000))
 	}
 
@@ -26,13 +27,18 @@ func BenchmarkUpdateTradeableItemsCache(b *testing.B) {
 	}
 	defer db.Close()
 
-	tradeableItemIds := generateItemIds()
+	// Test performance for different batch sizes
+	for _, size := range []int{100, 1000, 10000} {
+		tradeableItemIds := generateItemIds(size)
 
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		err := updateTradeableItemsCache(db, tradeableItemIds)
-		if err != nil {
-			b.Fatal(err)
-		}
+		b.Run(fmt.Sprintf("BatchSize-%d", size), func(b *testing.B) {
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				err := updateTradeableItemsCache(db, tradeableItemIds)
+				if err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
 	}
 }

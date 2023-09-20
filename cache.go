@@ -325,7 +325,7 @@ func updateBuildMetadata(db *sqlx.DB, buildMetadata Metadata) error {
 }
 
 func updateTradeableItemsCache(db *sqlx.DB, tradeableItemIds []int) error {
-	logger.Info("Updating local tradeable items cache")
+	logger.Debug("Updating local tradeable items cache")
 	createTableQuery := `
     CREATE TABLE IF NOT EXISTS tradeable_items (
 			id INTEGER PRIMARY KEY
@@ -365,7 +365,7 @@ func updateTradeableItemsCache(db *sqlx.DB, tradeableItemIds []int) error {
 }
 
 func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
-	logger.Info("Updating local Recipe cache")
+	logger.Debug("Updating local Recipe cache")
 	createtableQuery := `
     CREATE TABLE IF NOT EXISTS recipes (
       id INTEGER PRIMARY KEY,
@@ -464,7 +464,7 @@ func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 }
 
 func updateItemCache(db *sqlx.DB, items []Item) error {
-	logger.Info("Updating local Item cache...")
+	logger.Debug("Updating local Item cache...")
 	createTableQuery := `
     CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY,
