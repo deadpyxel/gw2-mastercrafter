@@ -73,3 +73,8 @@ func (s *StringSlice) Scan(value interface{}) error {
 	*s = strings.Split(str, ",")
 	return nil
 }
+
+type RecipeProfit struct {
+	RecipeID     int
+	ProfitMargin float64
+}
