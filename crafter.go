@@ -58,11 +58,11 @@ func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
 }
 
 func (crafter *Crafter) recipeOutputIsTradeable(itemID int) bool {
-	itemsOnTP, err := crafter.gw2APIClient.FetchAllIds("/commerce/prices")
+	isTradeable, err := crafter.localCache.ItemIsTradeable(itemID)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error loading tradable item ids from API: %v", err))
+		logger.Fatal(fmt.Sprintf("Error checking if item is tradeable: %v", err))
 	}
-	return slices.Contains(itemsOnTP, itemID)
+	return isTradeable
 }
 
 func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {

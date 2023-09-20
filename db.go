@@ -72,3 +72,16 @@ func (lc *LocalCache) GetItemById(itemID int) (*Item, error) {
 	}
 	return &item, nil
 }
+
+func (lc *LocalCache) ItemIsTradeable(itemID int) (bool, error) {
+	var id int
+	query := "SELECT EXISTS(SELECT 1 FROM tradeable_items WHERE id = ?)"
+	err := lc.db.Get(&id, query, itemID)
+	if err != nil {
+		if errors.Is(sql.ErrNoRows, err) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
