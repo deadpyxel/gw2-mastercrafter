@@ -7,7 +7,10 @@ import (
 )
 
 type Config struct {
-	ApiKey string `json:"api_key"`
+	ApiKey          string   `json:"api_key"`
+	ProfitThreshold float64  `json:"profit_threshold"`
+	LogLevel        string   `json:"log_level"`
+	RemovedTypes    []string `json:"removed_types"`
 }
 
 func ReadConfig() Config {
