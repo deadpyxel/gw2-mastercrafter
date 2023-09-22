@@ -27,6 +27,22 @@ type Recipe struct {
 	Ingredients     []Ingredient `json:"ingredients"`
 }
 
+type Currency struct {
+	ID          int    `json:"id" db:"id"`
+	Name        string `json:"name" db:"name"`
+	Description string `json:"description" db:"description"`
+}
+
+type WalletCurrency struct {
+	CurrencyID int `json:"id"`
+	Value      int `json:"value"`
+}
+
+type MerchantItem struct {
+	ItemID int
+	Price  WalletCurrency
+}
+
 type TradingPostPrice struct {
 	Quantity  int `json:"quantity"`
 	UnitPrice int `json:"unit_price"`

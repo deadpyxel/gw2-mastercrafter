@@ -309,6 +309,10 @@ func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
 	return items, nil
 }
 
+func updateMerchantItems(db *sqlx.DB, merchantItems []MerchantItem) error {
+	return nil
+}
+
 func isRetriable(httpError error) bool {
 	fmt.Printf("%+v", httpError)
 	return true
