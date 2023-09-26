@@ -14,6 +14,7 @@ func main() {
 	// Load API Token, create API client instance
 	apiToken := os.Getenv("API_TOKEN")
 	configObj = config.ReadConfig()
+	logger.SetLevel(configObj.LogLevel)
 	if apiToken == "" {
 		apiToken = configObj.ApiKey
 	}

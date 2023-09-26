@@ -25,5 +25,9 @@ func ReadConfig() Config {
 		log.Fatalf("Unable to parse config file: %v", err)
 	}
 
+	if config.LogLevel == "" {
+		config.LogLevel = "INFO"
+	}
+
 	return config
 }
