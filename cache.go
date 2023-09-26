@@ -28,7 +28,7 @@ func UpdateCache(client *APIClient) {
 	}
 	if currentBuildMetadata.BuildNumber > storedBuildNumber {
 		// update cache
-		logger.Info(fmt.Sprintf("Found new build %d, updating local cache...", currentBuildMetadata.BuildNumber))
+		logger.Info("Found new build, updating local cache...", "buildNumber", currentBuildMetadata.BuildNumber)
 		recipes, err := fetchAllRecipeDataFromAPI(client)
 		if err != nil {
 			logger.Fatal(fmt.Sprintf("%v", err))
@@ -101,6 +101,7 @@ func fetchStoredBuildNumber(db *sqlx.DB) (int, error) {
 }
 
 func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
+	logger.Debug("Fetching recipe data from API")
 	recipesIds, err := client.FetchAllRecipesIds()
 	if err != nil {
 		return []Recipe{}, err
@@ -126,10 +127,13 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 				for retries > 0 {
 					<-ticker.C
 					recipes, err = client.BatchFetchRecipes(recipeIdsBatch)
-					if err == nil || isRetriable(err) {
+					if err == nil {
 						break
 					}
-					retries--
+					if isRetriable(err) {
+						retries--
+						continue
+					}
 				}
 				if err != nil {
 					errorChannel <- err
@@ -168,10 +172,13 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 	return recipes, nil
 }
 func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
+	logger.Debug("Fetching Item data from API")
 	itemIds, err := client.FetchAllItemsIds()
 	if err != nil {
 		return []Item{}, err
 	}
+
+	logger.Debug(fmt.Sprintf("Found %d items to fetch", len(itemIds)))
 
 	itemChannel := make(chan []Item)
 	itemIdsChannel := make(chan []int)
@@ -189,14 +196,20 @@ func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
 				var items []Item
 				var err error
 				retries := 3
+				// delay := time.Second
 
 				for retries > 0 {
 					<-ticker.C
 					items, err = client.BatchFetchItems(itemIdsBatch)
-					if err == nil || isRetriable(err) {
+					if err == nil {
 						break
 					}
-					retries--
+					if isRetriable(err) {
+						// time.Sleep(delay)
+						// delay *= 2
+						retries--
+						continue
+					}
 				}
 				if err != nil {
 					errorChannel <- err
