@@ -239,11 +239,6 @@ func updateMerchantItems(db *sqlx.DB, merchantItems []MerchantItem) error {
 	return nil
 }
 
-func isRetriable(httpError error) bool {
-	fmt.Printf("%+v", httpError)
-	return true
-}
-
 func updateBuildMetadata(db *sqlx.DB, buildMetadata Metadata) error {
 	if err := createMetadataTableIfNotExists(db); err != nil {
 		return err

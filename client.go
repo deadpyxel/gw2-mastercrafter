@@ -22,6 +22,19 @@ func NewAPIClient(baseURL, authToken string) *APIClient {
 	return &APIClient{baseURL: baseURL, authToken: authToken}
 }
 
+func isRetriable(httpError error) bool {
+	if httpError == nil {
+		return false
+	}
+	if respErr, ok := httpError.(interface{ Response() *http.Response }); ok {
+		if respErr.Response().StatusCode == http.StatusTooManyRequests {
+			logger.Warn("Request returned 429 status code", "error", httpError)
+			return true
+		}
+	}
+	return false
+}
+
 func formatIntSliceAsStr(ids []int) string {
 	idsAsStr := make([]string, len(ids))
 	for i, id := range ids {
