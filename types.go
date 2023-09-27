@@ -92,5 +92,6 @@ func (s *StringSlice) Scan(value interface{}) error {
 
 type RecipeProfit struct {
 	RecipeID     int
+	OutputItemID int
 	ProfitMargin float64
 }

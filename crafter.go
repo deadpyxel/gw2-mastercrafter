@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"slices"
 	"sort"
 )
@@ -21,7 +20,7 @@ func NewCrafter(gw2APIClient APIClient, localCache LocalCache) *Crafter {
 func (crafter *Crafter) fetchItemTPPrice(itemID int) *ItemPrice {
 	itemPrice, err := crafter.gw2APIClient.FetchItemPrice(itemID)
 	if err != nil {
-		log.Fatalf("Failed to fetch item price for itemID %d: %v", itemID, err)
+		logger.Fatal("Failed to fetch item price from API", "itemID", itemID, "error", err)
 	}
 	return itemPrice
 }
@@ -86,7 +85,13 @@ func (crafter *Crafter) calculateProfitMargin(recipe Recipe) float64 {
 	return (recipeOutputPrice * 0.85) / recipeCost
 }
 
-func (crafter *Crafter) FindProfitableOptions(itemID int) ([]RecipeProfit, error) {
+func (crafter *Crafter) FindProfitableOptions(itemID int, depth int) ([]RecipeProfit, error) {
+	if depth == 0 {
+		return nil, nil
+	}
+	if depth < 1 {
+		return nil, fmt.Errorf("Cannot have depth < 1")
+	}
 	availableRecipes, err := crafter.localCache.GetRecipeByIngredient(itemID)
 	if err != nil {
 		logger.Fatal(fmt.Sprintf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err))
@@ -94,7 +99,7 @@ func (crafter *Crafter) FindProfitableOptions(itemID int) ([]RecipeProfit, error
 	var profitableRecipes []RecipeProfit
 	for _, recipe := range availableRecipes {
 		if !crafter.recipeIsViable(recipe) {
-			logger.Debug(fmt.Sprintf("Recipe %d is not viable for crafting", recipe.ID))
+			logger.Debug("Recipe is not viable for crafting", "recipeID", recipe.ID)
 			continue
 		}
 		profitMargin := crafter.calculateProfitMargin(recipe)
@@ -103,7 +108,14 @@ func (crafter *Crafter) FindProfitableOptions(itemID int) ([]RecipeProfit, error
 			continue
 		}
 		logger.Debug("Recipe is profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
-		profitableRecipes = append(profitableRecipes, RecipeProfit{RecipeID: recipe.ID, ProfitMargin: profitMargin})
+		profitableRecipes = append(profitableRecipes, RecipeProfit{RecipeID: recipe.ID, OutputItemID: recipe.OutputItemID, ProfitMargin: profitMargin})
+
+		subRecipes, err := crafter.FindProfitableOptions(recipe.OutputItemID, depth-1)
+		if err != nil {
+			logger.Fatal("Error fetching subRecipes", "itemID", recipe.OutputItemID, "PArentRecipeID", recipe.ID)
+		}
+
+		profitableRecipes = append(profitableRecipes, subRecipes...)
 	}
 
 	sort.Slice(profitableRecipes, func(i, j int) bool {
