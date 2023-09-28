@@ -132,6 +132,7 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 				var recipes []Recipe
 				var err error
 				retries := 3
+				delay := time.Second
 
 				for retries > 0 {
 					<-ticker.C
@@ -140,6 +141,8 @@ func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
 						break
 					}
 					if isRetriable(err) {
+						time.Sleep(delay)
+						delay *= 2
 						retries--
 						continue
 					}
@@ -205,7 +208,7 @@ func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
 				var items []Item
 				var err error
 				retries := 3
-				// delay := time.Second
+				delay := time.Second
 
 				for retries > 0 {
 					<-ticker.C
@@ -214,8 +217,8 @@ func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
 						break
 					}
 					if isRetriable(err) {
-						// time.Sleep(delay)
-						// delay *= 2
+						time.Sleep(delay)
+						delay *= 2
 						retries--
 						continue
 					}
