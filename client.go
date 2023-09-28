@@ -23,6 +23,7 @@ func NewAPIClient(baseURL, authToken string) *APIClient {
 }
 
 func isRetriable(httpError error) bool {
+	logger.Debug("Verifying error", "error", httpError)
 	if httpError == nil {
 		return false
 	}
@@ -182,4 +183,11 @@ func (client *APIClient) FetchItemPrice(itemID int) (*ItemPrice, error) {
 	var itemPrice ItemPrice
 	err := client.fetchAndDecode(endpoint, &itemPrice)
 	return &itemPrice, err
+}
+
+func (client *APIClient) FetchCurrencies() ([]Currency, error) {
+	endpoint := "/currencies?ids=all"
+	var currencies []Currency
+	err := client.fetchAndDecode(endpoint, &currencies)
+	return currencies, err
 }

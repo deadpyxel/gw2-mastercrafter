@@ -53,6 +53,15 @@ func UpdateCache(client *APIClient) {
 		if err != nil {
 			logger.Fatal(fmt.Sprintf("Failure updating local tradeable item cache: %v", err))
 		}
+
+		currencies, err := client.FetchCurrencies()
+		if err != nil {
+			logger.Fatal("Failed to fetch currency info from API", "error", err)
+		}
+		err = updateCurrencyCache(db, currencies)
+		if err != nil {
+			logger.Fatal("Failure updating local currency info cache", "error", err)
+		}
 		// update build number here
 		err = updateBuildMetadata(db, currentBuildMetadata)
 		if err != nil {
@@ -398,6 +407,47 @@ func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("Failed to commit transiction while updating recipe cache: %w", err)
 	}
+	return nil
+}
+
+func updateCurrencyCache(db *sqlx.DB, currencies []Currency) error {
+	logger.Debug("Updating in-game currency cache")
+	createTableQuery := `
+    CREATE TABLE IF NOT EXISTS currencies (
+      id INTEGER PRIMARY KEY,
+      name TEXT,
+      description TEXT
+    );
+  `
+	_, err := db.Exec(createTableQuery)
+	if err != nil {
+		return err
+	}
+
+	tx, err := db.Beginx()
+	if err != nil {
+		return err
+	}
+
+	stmt, err := tx.Preparex("INSERT OR REPLACE INTO currencies (id, name, description) VALUES (?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, currency := range currencies {
+		_, err = stmt.Exec(currency.ID, currency.Name, currency.Description)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
