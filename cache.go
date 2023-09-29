@@ -314,6 +314,105 @@ func updateTradeableItemsCache(db *sqlx.DB, tradeableItemIds []int) error {
 	return nil
 }
 
+func updateMerchantCache(db *sqlx.DB, merchants []Merchant) error {
+	logger.Debug("Updating local Merchant cache...")
+	createtableQuery := `
+    CREATE TABLE IF NOT EXISTS merchants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT,
+      display_name TEXT,
+      locations TEXT
+     );
+
+     CREATE TABLE IF NOT EXISTS purchase_options (
+      id INTEGER PRIMARY KEY,
+      merchant_id INTEGER,
+      type TEXT,
+      item_id INTEGER,
+      count INTEGER,
+      ignore BOOLEAN,
+      FOREIGN KEY(merchant_id) REFERENCES merchants(id),
+      UNIQUE(item_id, merchant_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS prices (
+      id INTEGER PRIMARY KEY,
+      purchase_option_id INTEGER,
+      type TEXT,
+      currency_id INTEGER,
+      count INTEGER,
+      FOREIGN KEY(purchase_option_id) REFERENCES purchase_options(id),
+      UNIQUE(currency_id, purchase_option_id)
+    );
+  `
+	_, err := db.Exec(createtableQuery)
+	if err != nil {
+		return err
+	}
+	// create transaction object
+	tx, err := db.Beginx()
+	if err != nil {
+		return err
+	}
+
+	upsertMerchantStmt := `
+		INSERT INTO merchants (name, display_name, locations)
+		VALUES (?, ?, ?)
+		ON CONFLICT(name, display_name, locations) DO UPDATE SET
+			name = excluded.name,
+			display_name = excluded.display_name,
+			locations = excluded.locations;
+  `
+	upsertPurchaseOptionStmt := `
+		INSERT INTO purchase_options (merchant_id, type, item_id, count, ignore)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(item_id, merchant_id) DO UPDATE SET
+			type = excluded.type,
+			count = excluded.count,
+			ignore = excluded.ignore
+  `
+	upsertPriceStmt := `
+		INSERT INTO prices (purchase_option_id, type, currency_id, count)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(currency_id, purchase_option_id) DO UPDATE SET
+			type = excluded.type,
+			count = excluded.count
+  `
+
+	for _, merchant := range merchants {
+		result, err := tx.Exec(upsertMerchantStmt, merchant.Name, merchant.DisplayName, strings.Join(merchant.Locations, ","))
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("Error upserting merchant %s: %w", merchant.Name, err)
+		}
+		merchantID, err := result.LastInsertId()
+		if err != nil {
+			tx.Rollback()
+			return fmt.Errorf("Error getting last inserted merchant ID: %w", err)
+		}
+		for _, option := range merchant.PurchaseOptions {
+			_, err := tx.Exec(upsertPurchaseOptionStmt, merchantID, option.Type, option.ID, option.Count, option.Ignore)
+			if err != nil {
+				tx.Rollback()
+				return fmt.Errorf("Error upserting purchase option %d for merchant %d: %w", option.ID, merchantID, err)
+			}
+
+			for _, price := range option.Price {
+				_, err := tx.Exec(upsertPriceStmt, option.ID, price.Type, price.ID, price.Count)
+				if err != nil {
+					tx.Rollback()
+					return fmt.Errorf("Error upserting price %d for purchase option %d: %w", price.ID, option.ID, err)
+				}
+			}
+		}
+	}
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("Failed to commit transaction while updating merchant cache: %w", err)
+	}
+	return nil
+}
+
 func updateRecipeCache(db *sqlx.DB, recipes []Recipe) error {
 	logger.Debug("Updating local Recipe cache")
 	createtableQuery := `
