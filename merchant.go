@@ -20,10 +20,10 @@ type MerchantOptions struct {
 }
 
 type Merchant struct {
-	Name            string            `json:"name"`                   // Merchant name
-	Locations       []string          `json:"locations"`              // Merchant locations
-	DisplayName     string            `json:"display_name,omitempty"` // Display name for merchant
-	PurchaseOptions []MerchantOptions `json:"purchase_options"`       // Offerings by merchant
+	Name            string            `json:"name" db:"name"`                           // Merchant name
+	Locations       []string          `json:"locations" db:"location"`                  // Merchant locations
+	DisplayName     string            `json:"display_name,omitempty" db:"display_name"` // Display name for merchant
+	PurchaseOptions []MerchantOptions `json:"purchase_options"`                         // Offerings by merchant
 }
 
 func ParseMerchantDataFile(filepath string) ([]Merchant, error) {

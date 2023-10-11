@@ -62,6 +62,14 @@ func UpdateCache(client *APIClient) {
 		if err != nil {
 			logger.Fatal("Failure updating local currency info cache", "error", err)
 		}
+		merchants, err := ParseMerchantDataFile("merchant-data.json")
+		if err != nil {
+			logger.Fatal("Failure loading Merchant data from JSON file", "error", err)
+		}
+		err = updateMerchantOfferings(db, merchants)
+		if err != nil {
+			logger.Fatal("Failed to update local merchant cache", "error", err)
+		}
 		// update build number here
 		err = updateBuildMetadata(db, currentBuildMetadata)
 		if err != nil {
@@ -260,7 +268,83 @@ func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
 	return items, nil
 }
 
-func updateMerchantItems(db *sqlx.DB, merchantItems []MerchantItem) error {
+func updateMerchantOfferings(db *sqlx.DB, merchants []Merchant) error {
+	logger.Debug("Updating local merchant data")
+	logger.Debug("Loaded Merchant data", "sizeMerchants", len(merchants))
+	createMerchantTableQuery := `
+    CREATE TABLE IF NOT EXISTS merchants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      locations TEXT NOT NULL,
+      display_name TEXT
+    );
+  `
+	createPurchaseOptionsTableQuery := `
+    CREATE TABLE IF NOT EXISTS purchase_options (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      item_id INTEGER NOT NULL,
+      count INTEGER NOT NULL,
+      ignore BOOLEAN NOT NULL,
+      merchant_id INTEGER,
+      FOREIGN KEY (merchant_id) REFERENCES merchants (id)
+    );
+  `
+	createMerchantPricesTableQuery := `
+    CREATE TABLE IF NOT EXISTS merchant_prices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      currency_id INTEGER NOT NULL,
+      count INTEGER NOT NULL,
+      purchase_option_id INTEGER,
+      FOREIGN KEY (purchase_option_id) REFERENCES purchase_options (id)
+    );
+  `
+	_, err := db.Exec(createMerchantTableQuery)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(createPurchaseOptionsTableQuery)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(createMerchantPricesTableQuery)
+	if err != nil {
+		return err
+	}
+	for _, merchant := range merchants {
+		res, err := db.Exec(`INSERT INTO merchants (name, locations, display_name) VALUES (?, ?, ?)`,
+			merchant.Name, strings.Join(merchant.Locations, ","), merchant.DisplayName)
+		if err != nil {
+			return err
+		}
+
+		merchantID, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+
+		for _, option := range merchant.PurchaseOptions {
+			res, err := db.Exec(`INSERT INTO purchase_options (type, item_id, count, ignore, merchant_id) VALUES (?, ?, ?, ?, ?)`,
+				option.Type, option.ID, option.Count, option.Ignore, merchantID)
+			if err != nil {
+				return err
+			}
+
+			optionID, err := res.LastInsertId()
+			if err != nil {
+				return err
+			}
+
+			for _, price := range option.Price {
+				_, err := db.Exec(`INSERT INTO merchant_prices (type, currency_id, count, purchase_option_id) VALUES (?, ?, ?, ?)`,
+					price.Type, price.ID, price.Count, optionID)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
 	return nil
 }
 
