@@ -22,12 +22,6 @@ func main() {
 
 	UpdateCache(gw2Client)
 
-	merchants, err := ParseMerchantDataFile("merchant-data.json")
-	if err != nil {
-		logger.Fatal("Failed to parse Merchant data from JSON file", "error", err)
-	}
-	logger.Info("Merchant data", "merchants", merchants[:10], "sizeMerchants", len(merchants))
-
 	// Initialize Local SQLite Cache connection
 	db, err := sqlx.Connect("sqlite3", "cache.db")
 	if err != nil {
