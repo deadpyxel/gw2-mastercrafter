@@ -85,3 +85,27 @@ func (lc *LocalCache) ItemIsTradeable(itemID int) (bool, error) {
 	}
 	return true, nil
 }
+
+func (lc *LocalCache) GetCurrencyIDByName(currencyName string) (int, error) {
+	var id int
+	err := lc.db.QueryRowx(`SELECT id FROM currencies WHERE name = ?`, currencyName).Scan(&id)
+	if err != nil {
+		return 0, err
+	}
+	return id, nil
+}
+
+func (lc *LocalCache) HasPurchaseOptionWithCurrency(itemId int, currencyName string) (bool, error) {
+	currencyId, err := lc.GetCurrencyIDByName(currencyName)
+	if err != nil {
+		return false, err
+	}
+	var count int
+	err = lc.db.QueryRowx(`SELECT COUNT(*) FROM purchase_options po
+                           JOIN merchant_prices mp ON po.id = mp.purchase_option_id
+                           WHERE po.item_id = ? AND mp.currency_id = ? AND po.ignore = 0`, itemId, currencyId).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
