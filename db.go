@@ -90,6 +90,9 @@ func (lc *LocalCache) GetCurrencyIDByName(currencyName string) (int, error) {
 	var id int
 	err := lc.db.QueryRowx(`SELECT id FROM currencies WHERE name = ?`, currencyName).Scan(&id)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, errors.New("Currency not found")
+		}
 		return 0, err
 	}
 	return id, nil
