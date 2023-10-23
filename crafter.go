@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"slices"
 	"sort"
 )
@@ -17,33 +18,46 @@ func NewCrafter(gw2APIClient APIClient, localCache LocalCache) *Crafter {
 	return &Crafter{gw2APIClient: gw2APIClient, localCache: localCache}
 }
 
-func (crafter *Crafter) fetchItemTPPrice(itemID int) *ItemPrice {
+func (crafter *Crafter) fetchItemTPPrice(itemID int) (*ItemPrice, error) {
 	itemPrice, err := crafter.gw2APIClient.FetchItemPrice(itemID)
 	if err != nil {
-		logger.Fatal("Failed to fetch item price from API", "itemID", itemID, "error", err)
+		apiErr, ok := err.(*APIError)
+		if ok && apiErr.StatusCode == http.StatusNotFound {
+			logger.Error("Item Price not found on TP", "itemID", itemID)
+		}
+		return nil, err
 	}
-	return itemPrice
+	return itemPrice, nil
 }
 
-func (crafter *Crafter) findItemSellValue(itemID int) int {
-	itemPrice := *crafter.fetchItemTPPrice(itemID)
-	return itemPrice.Sells.UnitPrice
+func (crafter *Crafter) findItemSellValue(itemID int) (int, error) {
+	itemPrice, err := crafter.fetchItemTPPrice(itemID)
+	if err != nil {
+		return 0, err
+	}
+	return itemPrice.Sells.UnitPrice, nil
 }
 
-func (crafter *Crafter) findItemBuyValue(itemID int) int {
-	itemPrice := *crafter.fetchItemTPPrice(itemID)
-	return itemPrice.Buys.UnitPrice
+func (crafter *Crafter) findItemBuyValue(itemID int) (int, error) {
+	itemPrice, err := crafter.fetchItemTPPrice(itemID)
+	if err != nil {
+		return 0, err
+	}
+	return itemPrice.Buys.UnitPrice, nil
 }
 
-func (crafter *Crafter) extractRecipeCost(recipe Recipe) int {
+func (crafter *Crafter) extractRecipeCost(recipe Recipe) (int, error) {
 	ingredients := recipe.Ingredients
 	recipeCost := 0
 	for _, ingredient := range ingredients {
-		itemPrice := crafter.findItemBuyValue(ingredient.ItemID)
+		itemPrice, err := crafter.findItemBuyValue(ingredient.ItemID)
+		if err != nil {
+			return 0, fmt.Errorf("failed to find item buy value: %w", err)
+		}
 		// TODO: Currently hardcode to use buy order price for recipe cost
 		recipeCost += itemPrice * ingredient.Count
 	}
-	return recipeCost
+	return recipeCost, nil
 }
 
 func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
@@ -77,12 +91,18 @@ func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {
 	return crafter.recipeIsAvailable(recipe) && crafter.itemIsTradeable(recipe.OutputItemID) && crafter.itemTypeisAllowed(recipe.Type)
 }
 
-func (crafter *Crafter) calculateProfitMargin(recipe Recipe) float64 {
+func (crafter *Crafter) calculateProfitMargin(recipe Recipe) (float64, error) {
 	logger.Debug("Calculating profit margin...", "recipeID", recipe.ID, "OutputItemID", recipe.OutputItemID)
-	recipeCost := float64(crafter.extractRecipeCost(recipe))
-	recipeOutputPrice := float64(crafter.findItemSellValue(recipe.OutputItemID))
+	recipeCost, err := crafter.extractRecipeCost(recipe)
+	if err != nil {
+		return 0, err
+	}
+	recipeOutputPrice, err := crafter.findItemSellValue(recipe.OutputItemID)
+	if err != nil {
+		return 0, err
+	}
 	// Assuming we are selling it on TP
-	return (recipeOutputPrice * 0.85) / recipeCost
+	return (float64(recipeOutputPrice) * 0.85) / float64(recipeCost), nil
 }
 
 func (crafter *Crafter) FindProfitableOptions(itemID int, depth int) ([]RecipeProfit, error) {
@@ -102,7 +122,10 @@ func (crafter *Crafter) FindProfitableOptions(itemID int, depth int) ([]RecipePr
 			logger.Debug("Recipe is not viable for crafting", "recipeID", recipe.ID)
 			continue
 		}
-		profitMargin := crafter.calculateProfitMargin(recipe)
+		profitMargin, err := crafter.calculateProfitMargin(recipe)
+		if err != nil {
+			return nil, err
+		}
 		if profitMargin < configObj.ProfitThreshold {
 			logger.Debug("Recipe not profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
 			continue

@@ -22,6 +22,16 @@ func NewAPIClient(baseURL, authToken string) *APIClient {
 	return &APIClient{baseURL: baseURL, authToken: authToken}
 }
 
+type APIError struct {
+	StatusCode  int
+	RequestPath string
+	Message     string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API request error: StatusCode=%d, RequestPath=%s ,Message=%s", e.StatusCode, e.RequestPath, e.Message)
+}
+
 func isRetriable(httpError error) bool {
 	logger.Debug("Verifying error", "error", httpError)
 	if httpError == nil {
@@ -63,7 +73,11 @@ func (client *APIClient) fetchAndDecode(endpoint string, targetType interface{})
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("API request error querying [%s]: StatusCode=%s, Response: %+v", endpoint, response.Status, response)
+		return &APIError{
+			StatusCode:  response.StatusCode,
+			RequestPath: endpoint,
+			Message:     fmt.Sprintf("API request error querying [%s]: StatusCode=%s, Response: %+v", endpoint, response.Status, response),
+		}
 	}
 
 	body, err := io.ReadAll(response.Body)
