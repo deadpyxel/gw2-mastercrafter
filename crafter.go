@@ -18,12 +18,34 @@ func NewCrafter(gw2APIClient APIClient, localCache LocalCache) *Crafter {
 	return &Crafter{gw2APIClient: gw2APIClient, localCache: localCache}
 }
 
+type NoPurchasingOptionsFoundError struct {
+	ItemID  int
+	Message string
+}
+
+func (e *NoPurchasingOptionsFoundError) Error() string {
+	return fmt.Sprintf("%s for ItemID=%d", e.Message, e.ItemID)
+}
+
 func (crafter *Crafter) fetchItemTPPrice(itemID int) (*ItemPrice, error) {
 	itemPrice, err := crafter.gw2APIClient.FetchItemPrice(itemID)
 	if err != nil {
 		apiErr, ok := err.(*APIError)
 		if ok && apiErr.StatusCode == http.StatusNotFound {
-			logger.Error("Item Price not found on TP", "itemID", itemID)
+			logger.Warn("Item Price not found on TP, checking merchant options", "itemID", itemID)
+			hasPurchaseOption, err := crafter.localCache.HasPurchaseOptionWithCurrency(itemID, "Coin")
+			if err != nil {
+				return nil, fmt.Errorf("Failed to check for purchasing options: %w", err)
+			}
+			if !hasPurchaseOption {
+				return nil, &NoPurchasingOptionsFoundError{ItemID: itemID, Message: "No purchasing options found"}
+			}
+			merchantPrice, err := crafter.localCache.GetMerchantItemPrice(itemID, "Coin")
+			if err != nil {
+				return nil, err
+			}
+			logger.Info("Found merchant price", "itemID", itemID)
+			return merchantPrice, nil
 		}
 		return nil, err
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"errors"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -111,4 +112,30 @@ func (lc *LocalCache) HasPurchaseOptionWithCurrency(itemId int, currencyName str
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func (lc *LocalCache) GetMerchantItemPrice(itemID int, currencyName string) (*ItemPrice, error) {
+	currencyId, err := lc.GetCurrencyIDByName(currencyName)
+	if err != nil {
+		return nil, err
+	}
+	var currencyPrice int
+	err = lc.db.QueryRowx(
+		`SELECT mp.count FROM merchant_prices merchant_prices
+    JOIN purchase_options po ON mp.purchase_option_id = po.recipe_id
+    WHERE po.item_id = ? AND mp.currency_id = ?`, itemID, currencyId).Scan(&currencyPrice)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// No price was found with given currency
+			return nil, fmt.Errorf("No price found in %s for itemID %d", currencyName, itemID)
+		}
+		// An error has occurred during the query
+		return nil, err
+	}
+	// Price found, return a custom ItemPrice
+	return &ItemPrice{
+		ID:    itemID,
+		Buys:  TradingPostPrice{UnitPrice: currencyPrice},
+		Sells: TradingPostPrice{UnitPrice: currencyPrice},
+	}, nil
 }
