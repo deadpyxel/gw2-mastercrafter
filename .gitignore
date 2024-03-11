@@ -68,3 +68,6 @@ tags
 
 config.json
 cache.db
+
+# built artifacts
+bin/
