@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -93,10 +94,48 @@ func (client *APIClient) fetchAndDecode(endpoint string, targetType interface{})
 	return nil
 }
 
+func fetchBuildNumberData(url string) (string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	return string(body), nil
+}
+
+func parseBuildNumber(data string) (int, error) {
+	if len(data) == 0 {
+		return 0, errors.New("Cannot parse empty build number data")
+	}
+	parts := strings.Split(data, " ")
+	if len(parts) == 0 {
+		return 0, errors.New("No build number data available")
+	}
+
+	firstNum, err := strconv.Atoi(parts[0])
+	if err != nil {
+		return 0, err
+	}
+	return firstNum, nil
+}
+
 func (client *APIClient) FetchBuildNumber() (Metadata, error) {
-	endpoint := "/build"
 	var metadata Metadata
-	err := client.fetchAndDecode(endpoint, &metadata)
+	buildNumberData, err := fetchBuildNumberData("http://assetcdn.101.arenanetworks.com/latest/101")
+	if err != nil {
+		return metadata, err
+	}
+	newBuild, err := parseBuildNumber(buildNumberData)
+	if err != nil {
+		return metadata, err
+	}
+	metadata.BuildNumber = newBuild
 	return metadata, err
 }
 
