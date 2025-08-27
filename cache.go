@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
@@ -118,154 +117,36 @@ func fetchStoredBuildNumber(db *sqlx.DB) (int, error) {
 }
 
 func fetchAllRecipeDataFromAPI(client *APIClient) ([]Recipe, error) {
-	logger.Debug("Fetching recipe data from API")
 	recipesIds, err := client.FetchAllRecipesIds()
 	if err != nil {
 		return []Recipe{}, err
 	}
 
-	recipeChannel := make(chan []Recipe)
-	recipeIdsChannel := make(chan RecipeIds)
-	errorChannel := make(chan error)
-	doneChannel := make(chan struct{})
+	config := DefaultBatchFetchConfig()
+	fetcher := NewBatchFetcher[Recipe, int](config, logger)
 
-	concurrency := 8
-	batchSize := 200
-	ticker := time.NewTicker(time.Minute / 300) // GW2 API has 300 requests/minute rate limit
-
-	// start goroutines
-	for i := 0; i < concurrency; i++ {
-		go func() {
-			for recipeIdsBatch := range recipeIdsChannel {
-				var recipes []Recipe
-				var err error
-				retries := 3
-				delay := time.Second
-
-				for retries > 0 {
-					<-ticker.C
-					recipes, err = client.BatchFetchRecipes(recipeIdsBatch)
-					if err == nil {
-						break
-					}
-					if isRetriable(err) {
-						time.Sleep(delay)
-						delay *= 2
-						retries--
-						continue
-					}
-				}
-				if err != nil {
-					errorChannel <- err
-					return
-				}
-				recipeChannel <- recipes
-			}
-			doneChannel <- struct{}{}
-		}()
+	// Create batch fetch function that wraps the client method
+	fetchBatch := func(ids []int) ([]Recipe, error) {
+		return client.BatchFetchRecipes(RecipeIds(ids))
 	}
 
-	// distribute work
-	go func() {
-		for i := 0; i < len(recipesIds); i += batchSize {
-			end := i + batchSize
-			if end > len(recipesIds) {
-				end = len(recipesIds)
-			}
-			recipeIdsChannel <- recipesIds[i:end]
-		}
-		close(recipeIdsChannel)
-	}()
-
-	recipes := []Recipe{}
-	completedGoroutines := 0
-	for completedGoroutines < concurrency {
-		select {
-		case recipesBatch := <-recipeChannel:
-			recipes = append(recipes, recipesBatch...)
-		case err := <-errorChannel:
-			return []Recipe{}, err
-		case <-doneChannel:
-			completedGoroutines++
-		}
-	}
-	return recipes, nil
+	return fetcher.FetchAll(recipesIds, fetchBatch, "recipes")
 }
 func fetchAllItemDataFromAPI(client *APIClient) ([]Item, error) {
-	logger.Debug("Fetching Item data from API")
 	itemIds, err := client.FetchAllItemsIds()
 	if err != nil {
 		return []Item{}, err
 	}
 
-	logger.Debug(fmt.Sprintf("Found %d items to fetch", len(itemIds)))
+	config := DefaultBatchFetchConfig()
+	fetcher := NewBatchFetcher[Item, int](config, logger)
 
-	itemChannel := make(chan []Item)
-	itemIdsChannel := make(chan []int)
-	errorChannel := make(chan error)
-	doneChannel := make(chan struct{})
-
-	concurrency := 8
-	batchSize := 200
-	ticker := time.NewTicker(time.Minute / 300) // GW2 API has 300 requests/minute rate limit
-
-	// start goroutines
-	for i := 0; i < concurrency; i++ {
-		go func() {
-			for itemIdsBatch := range itemIdsChannel {
-				var items []Item
-				var err error
-				retries := 3
-				delay := time.Second
-
-				for retries > 0 {
-					<-ticker.C
-					items, err = client.BatchFetchItems(itemIdsBatch)
-					if err == nil {
-						break
-					}
-					if isRetriable(err) {
-						time.Sleep(delay)
-						delay *= 2
-						retries--
-						continue
-					}
-				}
-				if err != nil {
-					errorChannel <- err
-					return
-				}
-				itemChannel <- items
-			}
-			doneChannel <- struct{}{}
-		}()
+	// Create batch fetch function that wraps the client method
+	fetchBatch := func(ids []int) ([]Item, error) {
+		return client.BatchFetchItems(ids)
 	}
 
-	// distribute work
-	go func() {
-		for i := 0; i < len(itemIds); i += batchSize {
-			end := i + batchSize
-			if end > len(itemIds) {
-				end = len(itemIds)
-			}
-			itemIdsChannel <- itemIds[i:end]
-		}
-		close(itemIdsChannel)
-	}()
-
-	items := []Item{}
-	completedGoroutines := 0
-	for completedGoroutines < concurrency {
-		select {
-		case itemBatch := <-itemChannel:
-			items = append(items, itemBatch...)
-		case err := <-errorChannel:
-			return []Item{}, err
-		case <-doneChannel:
-			completedGoroutines++
-		}
-	}
-	return items, nil
+	return fetcher.FetchAll(itemIds, fetchBatch, "items")
 }
 
 func updateMerchantOfferings(db *sqlx.DB, merchants []Merchant) error {
