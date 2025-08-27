@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	config "github.com/deadpyxel/gw2-mastercrafter/internal"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -15,7 +16,13 @@ func TestFindProfitableOptions(t *testing.T) {
 	apiClient := NewAPIClient("localhost", "token")
 	localCache := NewLocalCache(db)
 
-	crafter := NewCrafter(*apiClient, *localCache)
+	// Create a mock config for testing
+	testConfig := &config.Config{
+		ProfitThreshold: 1.1,
+		RemovedTypes:    []string{"Consumable"},
+	}
+
+	crafter := NewCrafter(apiClient, localCache, logger, testConfig)
 
 	tests := []struct {
 		name    string

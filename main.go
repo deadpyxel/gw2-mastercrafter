@@ -31,7 +31,7 @@ func main() {
 	localCache := NewLocalCache(db)
 
 	// Create crafter instance
-	crafter := NewCrafter(*gw2Client, *localCache)
+	crafter := NewCrafter(gw2Client, localCache, logger, &configObj)
 	targetItems := []int{19718, 19739, 19741, 19743, 19748, 19745, 19719, 19728, 19730, 19731, 19729, 19732, 19697, 19704, 19703, 19699, 19698, 19702, 19700, 19701, 19723, 19726, 19727, 19724, 19722, 19725}
 	for _, targetItem := range targetItems {
 		profitableRecipes, err := crafter.FindProfitableOptions(targetItem, 1)
