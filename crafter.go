@@ -10,12 +10,14 @@ import (
 // A Crafter uses the API client to request data about pricing of items,
 // while using the localCache to search information on crafting recipes
 type Crafter struct {
-	gw2APIClient APIClient  // underlying API client connection
-	localCache   LocalCache // underlying local SQlite cache
+	gw2APIClient GW2APIClient // underlying API client connection
+	localCache   Cache        // underlying local cache
+	logger       Logger       // logger for debug/info messages
+	config       Config       // configuration for thresholds and filters
 }
 
-func NewCrafter(gw2APIClient APIClient, localCache LocalCache) *Crafter {
-	return &Crafter{gw2APIClient: gw2APIClient, localCache: localCache}
+func NewCrafter(gw2APIClient GW2APIClient, localCache Cache, logger Logger, config Config) *Crafter {
+	return &Crafter{gw2APIClient: gw2APIClient, localCache: localCache, logger: logger, config: config}
 }
 
 type NoPurchasingOptionsFoundError struct {
@@ -32,7 +34,7 @@ func (crafter *Crafter) fetchItemTPPrice(itemID int) (*ItemPrice, error) {
 	if err != nil {
 		apiErr, ok := err.(*APIError)
 		if ok && apiErr.StatusCode == http.StatusNotFound {
-			logger.Warn("Item Price not found on TP, checking merchant options", "itemID", itemID)
+			crafter.logger.Warn("Item Price not found on TP, checking merchant options", "itemID", itemID)
 			hasPurchaseOption, err := crafter.localCache.HasPurchaseOptionWithCurrency(itemID, "Coin")
 			if err != nil {
 				return nil, fmt.Errorf("Failed to check for purchasing options: %w", err)
@@ -44,7 +46,7 @@ func (crafter *Crafter) fetchItemTPPrice(itemID int) (*ItemPrice, error) {
 			if err != nil {
 				return nil, err
 			}
-			logger.Info("Found merchant price", "itemID", itemID)
+			crafter.logger.Info("Found merchant price", "itemID", itemID)
 			return merchantPrice, nil
 		}
 		return nil, err
@@ -88,7 +90,7 @@ func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
 	}
 	knownRecipeIds, err := crafter.gw2APIClient.FetchKnownRecipesIds()
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error fetching Known Recipe IDs: %v", err))
+		crafter.logger.Fatal(fmt.Sprintf("Error fetching Known Recipe IDs: %v", err))
 	}
 	return slices.Contains(knownRecipeIds, recipe.ID)
 }
@@ -96,13 +98,13 @@ func (crafter *Crafter) recipeIsAvailable(recipe Recipe) bool {
 func (crafter *Crafter) itemIsTradeable(itemID int) bool {
 	isTradeable, err := crafter.localCache.ItemIsTradeable(itemID)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error checking if item is tradeable: %v", err))
+		crafter.logger.Fatal(fmt.Sprintf("Error checking if item is tradeable: %v", err))
 	}
 	return isTradeable
 }
 
 func (crafter *Crafter) itemTypeisAllowed(itemType string) bool {
-	return !slices.Contains(configObj.RemovedTypes, itemType)
+	return !slices.Contains(crafter.config.GetRemovedTypes(), itemType)
 }
 
 // A viable recipe is
@@ -114,7 +116,7 @@ func (crafter *Crafter) recipeIsViable(recipe Recipe) bool {
 }
 
 func (crafter *Crafter) calculateProfitMargin(recipe Recipe) (float64, error) {
-	logger.Debug("Calculating profit margin...", "recipeID", recipe.ID, "OutputItemID", recipe.OutputItemID)
+	crafter.logger.Debug("Calculating profit margin...", "recipeID", recipe.ID, "OutputItemID", recipe.OutputItemID)
 	recipeCost, err := crafter.extractRecipeCost(recipe)
 	if err != nil {
 		return 0, err
@@ -136,28 +138,28 @@ func (crafter *Crafter) FindProfitableOptions(itemID int, depth int) ([]RecipePr
 	}
 	availableRecipes, err := crafter.localCache.GetRecipeByIngredient(itemID)
 	if err != nil {
-		logger.Fatal(fmt.Sprintf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err))
+		crafter.logger.Fatal(fmt.Sprintf("Error fetching Available recipes for ItemID %d : %v\n", itemID, err))
 	}
 	var profitableRecipes []RecipeProfit
 	for _, recipe := range availableRecipes {
 		if !crafter.recipeIsViable(recipe) {
-			logger.Debug("Recipe is not viable for crafting", "recipeID", recipe.ID)
+			crafter.logger.Debug("Recipe is not viable for crafting", "recipeID", recipe.ID)
 			continue
 		}
 		profitMargin, err := crafter.calculateProfitMargin(recipe)
 		if err != nil {
 			return nil, err
 		}
-		if profitMargin < configObj.ProfitThreshold {
-			logger.Debug("Recipe not profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
+		if profitMargin < crafter.config.GetProfitThreshold() {
+			crafter.logger.Debug("Recipe not profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
 			continue
 		}
-		logger.Debug("Recipe is profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
+		crafter.logger.Debug("Recipe is profitable", "recipeID", recipe.ID, "profitMargin", profitMargin)
 		profitableRecipes = append(profitableRecipes, RecipeProfit{RecipeID: recipe.ID, OutputItemID: recipe.OutputItemID, ProfitMargin: profitMargin})
 
 		subRecipes, err := crafter.FindProfitableOptions(recipe.OutputItemID, depth-1)
 		if err != nil {
-			logger.Fatal("Error fetching subRecipes", "itemID", recipe.OutputItemID, "PArentRecipeID", recipe.ID)
+			crafter.logger.Fatal("Error fetching subRecipes", "itemID", recipe.OutputItemID, "PArentRecipeID", recipe.ID)
 		}
 
 		profitableRecipes = append(profitableRecipes, subRecipes...)
