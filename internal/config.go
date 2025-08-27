@@ -13,6 +13,16 @@ type Config struct {
 	RemovedTypes    []string `json:"removed_types"`
 }
 
+// GetProfitThreshold returns the profit threshold for viable recipes
+func (c *Config) GetProfitThreshold() float64 {
+	return c.ProfitThreshold
+}
+
+// GetRemovedTypes returns the list of item types to filter out
+func (c *Config) GetRemovedTypes() []string {
+	return c.RemovedTypes
+}
+
 func ReadConfig() Config {
 	file, err := os.ReadFile("config.json")
 	if err != nil {
